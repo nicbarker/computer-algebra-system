@@ -1,13 +1,17 @@
-import { AlgebraFunction, AlgebraFunctionType, AlgebraSymbol, CloneAlgebraFunction, ExecuteFunction, FunctionArguments, FunctionPrimitive, PrintFunctions, TestResult } from "./algebra";
+import { AlgebraConfig, AlgebraFunction, AlgebraFunctionType, AlgebraSymbol, CloneAlgebraFunction, ExecuteFunction, FunctionArguments, FunctionPrimitive, PrintFunctions, TestResult } from "./algebra";
 
 var debug = process.argv.length > 2 && process.argv[2] == "DEBUG";
 function CheckFunctionOutput(name: string, assert: string, algebraFunction: AlgebraFunction) {
+	AlgebraConfig.DEBUG = debug;
 	switch (CheckFunctionOutputInternal(name, assert, algebraFunction, debug)) {
 		case TestResult.SUCCESS: break;
 		case TestResult.ASSERT_NOT_MATCH:
 			{
 				console.log("Step Summary:");
+				AlgebraConfig.DEBUG = true;
+				console.log("------------------------------");
 				CheckFunctionOutputInternal(name, assert, algebraFunction, true);
+				AlgebraConfig.DEBUG = false;
 				break;
 			}
 		case TestResult.INFINITE_LOOP:
@@ -15,36 +19,51 @@ function CheckFunctionOutput(name: string, assert: string, algebraFunction: Alge
 				break;
 			}
 	}
+	AlgebraConfig.DEBUG = true;
+}
+
+function PrintFunctionsWithColors(functionString: string) {
+	var split = functionString.split("__MODIFIED__");
+	if (split.length == 3) {
+		console.log(split[0], "\x1b[34m", split[1], "\x1b[0m", split[2]);
+	}
+	else {
+		console.log(split[0]);
+	}
 }
 
 function CheckFunctionOutputInternal(name: string, assert: string, algebraFunction: AlgebraFunction, debug = false): TestResult {
 	var currentFunction = CloneAlgebraFunction(algebraFunction);
 	if (debug) {
-		console.log("------------------------------");
-		console.log(PrintFunctions(currentFunction));
+		console.log("\x1b[33m", name, "\x1b[0m");
+		console.log("\x1b[36m", `Starting value: ${PrintFunctions(currentFunction)}`, "\x1b[0m");
+		console.log("\x1b[36m", `Expecting result: ${assert}`, "\x1b[0m");
 	}
 	var resultsList: string[] = [];
 	for (var i = 0; i < 1000; i++) {
 		var resultString = PrintFunctions(currentFunction);
 		var result = ExecuteFunction(currentFunction);
 		if (debug) {
-			console.log(PrintFunctions(result.algebraFunction));
+			if (!result.collapsed) {
+				console.log("\x1b[30m", "- Result", "\x1b[0m");
+			}
+			PrintFunctionsWithColors(PrintFunctions(currentFunction, result.collapsedFunctionId));
 		}
 		currentFunction = result.algebraFunction;
 		if (!result.collapsed) {
 			if (resultString != assert) {
 				console.log("\x1b[31m", `${name} - Failed`, '\x1b[0m');
 				console.log(`Expected: \"${assert}\"`);
-				console.log(`Output: \"${resultString}\"`);
+				console.log(`Output: \"${resultString}\"\n`);
 				return TestResult.ASSERT_NOT_MATCH;
 			}
 			else {
-				console.log("\x1b[32m", `${name} - Passed`, '\x1b[0m');
+				console.log("\x1b[32m", `${name} - Passed\n`, '\x1b[0m');
 				return TestResult.SUCCESS;
 			}
 		}
-		else if (result.collapsed && resultsList.findIndex(r => r == resultString) != -1) {
-			console.log("\x1b[32m", `${name} - Passed with convergence`, '\x1b[0m');
+		else if (result.collapsed && resultsList.findIndex(r => r == resultString) != -1 && resultString == assert) {
+			console.log("\x1b[32m", `${name} - Passed with convergence\n`, '\x1b[0m');
 			return TestResult.SUCCESS;
 		}
 		resultsList.push(resultString);
@@ -253,3 +272,17 @@ CheckFunctionOutput("Divide Exponentials", "1(1(1X ^ 2) / 1(1Y ^ 2))",
 		FunctionPrimitive(2)
 	)
 );
+
+CheckFunctionOutput("Partial Division", "1(1(1(1X ^ 2) / 1(1Y ^ 2)) + 1(10X / 1Y) + 25)",
+	FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+		FunctionArguments(1, AlgebraFunctionType.ADD,
+			FunctionArguments(1, AlgebraFunctionType.DIV,
+				FunctionPrimitive(1, AlgebraSymbol.X),
+				FunctionPrimitive(1, AlgebraSymbol.Y)
+			),
+			FunctionPrimitive(5)
+		),
+		FunctionPrimitive(2)
+	)
+);
+

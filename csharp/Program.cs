@@ -6,13 +6,17 @@ var debug = args.Length > 0 && args[0] == "DEBUG";
 
 void CheckFunctionOutput(string name, string assert, Function function)
 {
+    Algebra.Functions.DEBUG = debug;
     switch (CheckFunctionOutputInternal(name, assert, function, debug))
     {
         case TestResult.SUCCESS: break;
         case TestResult.ASSERT_NOT_MATCH:
             {
                 Console.WriteLine($"Step Summary:");
+                Algebra.Functions.DEBUG = true;
+                Console.WriteLine("------------------------------");
                 CheckFunctionOutputInternal(name, assert, function, true);
+                Algebra.Functions.DEBUG = false;
                 break;
             }
         case TestResult.INFINITE_LOOP:
@@ -20,24 +24,52 @@ void CheckFunctionOutput(string name, string assert, Function function)
                 break;
             }
     }
+    Algebra.Functions.DEBUG = false;
+}
+
+static void PrintFunctionsWithColors(string functionString)
+{
+    var split = functionString.Split("__MODIFIED__");
+    if (split.Length == 3)
+    {
+        Console.Write(split[0]);
+        Console.ForegroundColor = ConsoleColor.DarkBlue;
+        Console.Write(split[1]);
+        Console.ResetColor();
+        Console.WriteLine(split[2]);
+    }
+    else
+    {
+        Console.WriteLine(split[0]);
+    }
 }
 
 static TestResult CheckFunctionOutputInternal(string name, string assert, Function function, bool debug = false)
 {
     var currentFunction = function.Clone();
+    var resultsList = new List<string>() { };
     if (debug)
     {
-        Console.WriteLine("------------------------------");
-        Console.WriteLine(PrintFunctions(currentFunction));
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine($"{name}");
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine($"Starting value: {PrintFunctions(currentFunction)}");
+        Console.WriteLine($"Expecting result: {assert}");
+        Console.ResetColor();
     }
-    var resultsList = new List<string>() { };
     for (var i = 0; i < 1000; i++)
     {
         var resultString = PrintFunctions(currentFunction);
         var result = ExecuteFunction(currentFunction);
         if (debug)
         {
-            Console.WriteLine(PrintFunctions(result.function));
+            if (!result.collapsed)
+            {
+                Console.ForegroundColor = ConsoleColor.Black;
+                Console.WriteLine("- Result");
+                Console.ResetColor();
+            }
+            PrintFunctionsWithColors(PrintFunctions(currentFunction, result.collapsedFunctionId));
         }
         currentFunction = result.function;
         if (!result.collapsed)
@@ -48,13 +80,13 @@ static TestResult CheckFunctionOutputInternal(string name, string assert, Functi
                 Console.WriteLine($"{name} - Failed");
                 Console.ResetColor();
                 Console.WriteLine($"Expected: \"{assert}\"");
-                Console.WriteLine($"Output: \"{resultString}\"");
+                Console.WriteLine($"Output: \"{resultString}\"\n");
                 return TestResult.ASSERT_NOT_MATCH;
             }
             else
             {
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"{name} - Passed");
+                Console.WriteLine($"{name} - Passed\n");
                 Console.ResetColor();
                 return TestResult.SUCCESS;
             }
@@ -62,7 +94,7 @@ static TestResult CheckFunctionOutputInternal(string name, string assert, Functi
         else if (result.collapsed && resultsList.Exists(r => r == resultString))
         {
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine($"{name} - Passed with convergence");
+            Console.WriteLine($"{name} - Passed with convergence\n");
             Console.ResetColor();
             return TestResult.SUCCESS;
         }
@@ -230,7 +262,7 @@ CheckFunctionOutput("Divide Add By Common Pronumeral", "1(1(3X + 4) / 1(1A + 2Y)
     )
 ));
 
-CheckFunctionOutput("Add Fractions", "1(1(1(1Y + 10 + 1X) / 3Y) + 2)", FunctionArguments(1, FunctionType.ADD,
+CheckFunctionOutput("Add Fractions", "1(1(4 / 3) + 1(1(10 + 1X) / 3Y))", FunctionArguments(1, FunctionType.ADD,
     FunctionArguments(1, FunctionType.DIV,
         FunctionArguments(1, FunctionType.ADD,
             FunctionPrimitive(1, Symbol.Y),
@@ -268,6 +300,19 @@ CheckFunctionOutput("Divide Exponentials", "1(1(1X ^ 2) / 1(1Y ^ 2))",
         FunctionArguments(1, FunctionType.DIV,
             FunctionPrimitive(1, Symbol.X),
             FunctionPrimitive(1, Symbol.Y)
+        ),
+        FunctionPrimitive(2)
+    )
+);
+
+CheckFunctionOutput("Partial Division", "1(1(1(1X ^ 2) / 1(1Y ^ 2)) + 1(10X / 1Y) + 25)",
+    FunctionArguments(1, FunctionType.EXPONENTIAL,
+        FunctionArguments(1, FunctionType.ADD,
+            FunctionArguments(1, FunctionType.DIV,
+                FunctionPrimitive(1, Symbol.X),
+                FunctionPrimitive(1, Symbol.Y)
+            ),
+            FunctionPrimitive(5)
         ),
         FunctionPrimitive(2)
     )

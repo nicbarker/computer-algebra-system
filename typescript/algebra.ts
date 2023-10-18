@@ -1,6 +1,17 @@
+export const AlgebraConfig = {
+	DEBUG: false
+};
+
+let nextFunctionId = 1;
+
+function PrintDebug(msg: string) {
+	if (AlgebraConfig.DEBUG) {
+		console.log("\x1b[30m", "- " + msg + " ↓", "\x1b[0m");
+	}
+}
 export function ExecuteFunction(algebraFunction: AlgebraFunction): FunctionResult {
 	if (algebraFunction.functionType == AlgebraFunctionType.PRIMITIVE) {
-		return { collapsed: false, algebraFunction: CloneAlgebraFunction(algebraFunction) };
+		return { collapsed: false, algebraFunction: algebraFunction };
 	}
 	else {
 		const results: FunctionResult[] = [];
@@ -15,7 +26,8 @@ export function ExecuteFunction(algebraFunction: AlgebraFunction): FunctionResul
 				if (newFunction.functionType != AlgebraFunctionType.ADD) break;
 			}
 			newFunction.quantity = 1;
-			return { collapsed: true, algebraFunction: newFunction };
+			PrintDebug("Distribute quantity into function arguments");
+			return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: newFunction.id };
 		}
 
 		// Execute sub functions, break on collapse
@@ -23,7 +35,7 @@ export function ExecuteFunction(algebraFunction: AlgebraFunction): FunctionResul
 			const result = ExecuteFunction(newFunction.arguments[i]);
 			if (result.collapsed) {
 				newFunction.arguments[i] = result.algebraFunction;
-				return { collapsed: true, algebraFunction: newFunction };
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: result.collapsedFunctionId };
 			}
 			// Hoist out Matryoshka doll add and mul functions
 			if ((newFunction.functionType == AlgebraFunctionType.ADD || newFunction.functionType == AlgebraFunctionType.MUL) && newFunction.functionType == result.algebraFunction.functionType) {
@@ -35,14 +47,16 @@ export function ExecuteFunction(algebraFunction: AlgebraFunction): FunctionResul
 					}
 					newFunction.arguments.splice(i, 0, toInsert);
 				}
-				return { collapsed: true, algebraFunction: newFunction };
+				PrintDebug(`Hoist nested ${newFunction.functionType} function`);
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: result.algebraFunction.id };
 			}
-			// Multiply quantity into mul
+			// Hoist quantity out into MUL function
 			if (newFunction.functionType == AlgebraFunctionType.MUL && result.algebraFunction.quantity != 1) {
 				newFunction.quantity *= result.algebraFunction.quantity;
 				result.algebraFunction.quantity = 1;
 				newFunction.arguments[i] = result.algebraFunction;
-				return { collapsed: true, algebraFunction: newFunction };
+				PrintDebug("Extract argument quantities into outer MUL function");
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: result.algebraFunction.id };
 			}
 			results.push(result);
 		}
@@ -51,7 +65,8 @@ export function ExecuteFunction(algebraFunction: AlgebraFunction): FunctionResul
 		if (newFunction.arguments.length == 1) {
 			const result = CloneAlgebraFunction(results[0].algebraFunction);
 			result.quantity *= newFunction.quantity;
-			return { collapsed: true, algebraFunction: result };
+			PrintDebug("Hoist single argument into parent");
+			return { collapsed: true, algebraFunction: result, collapsedFunctionId: result.id };
 		}
 		switch (algebraFunction.functionType) {
 			case AlgebraFunctionType.ADD: return Add(newFunction);
@@ -76,13 +91,15 @@ function Add(algebraFunction: AlgebraFunction): FunctionResult {
 			if (argument1.functionType == AlgebraFunctionType.DIV && argument2.functionType == AlgebraFunctionType.DIV && CalculateResultHashes(argument1.arguments[1]).exactHash == CalculateResultHashes(argument2.arguments[1]).exactHash) {
 				algebraFunction.arguments[i].arguments[0] = FunctionArguments(1, AlgebraFunctionType.ADD, CloneAlgebraFunction(argument1.arguments[0]), CloneAlgebraFunction(argument2.arguments[0]));
 				algebraFunction.arguments.splice(j, 1);
-				return { collapsed: true, algebraFunction };
+				PrintDebug("Add two exactly matching division functions");
+				return { collapsed: true, algebraFunction, collapsedFunctionId: algebraFunction.id };
 			}
 			if (argument1Hash.addHash == CalculateResultHashes(argument2).addHash) {
 				argument1.quantity += argument2.quantity;
 				algebraFunction.arguments[i] = argument1;
 				algebraFunction.arguments.splice(j, 1);
-				return { collapsed: true, algebraFunction };
+				PrintDebug("Combine add-able arguments in ADD function");
+				return { collapsed: true, algebraFunction, collapsedFunctionId: algebraFunction.id };
 			}
 		}
 	}
@@ -103,12 +120,14 @@ function Mul(algebraFunction: AlgebraFunction): FunctionResult {
 				newFunction.arguments[i] = argument1;
 				argument2.quantity = 1;
 				newFunction.arguments[j] = argument2;
-				return { collapsed: true, algebraFunction: newFunction };
+				PrintDebug(`Coalesce quantity into first MUL argument`);
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: argument2.id };
 			}
 			if (IsPrimitiveNumber(argument2)) // Always multiply and combine primitive numbers
 			{
 				newFunction.arguments.splice(j, 1);
-				return { collapsed: true, algebraFunction: newFunction };
+				PrintDebug("Multiply primitive numbers");
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: newFunction.id };
 			}
 			if (argument2.functionType == AlgebraFunctionType.DIV) // Distribute into DIV
 			{
@@ -118,27 +137,30 @@ function Mul(algebraFunction: AlgebraFunction): FunctionResult {
 						FunctionArguments(1, AlgebraFunctionType.MUL, CloneAlgebraFunction(argument1.arguments[0]), CloneAlgebraFunction(argument2.arguments[0])),
 						FunctionArguments(1, AlgebraFunctionType.MUL, CloneAlgebraFunction(argument1.arguments[1]), CloneAlgebraFunction(argument2.arguments[1]))
 					);
+					PrintDebug("Straight multiply DIV numerator & denominator");
 				}
 				else {
 					newFunction.arguments[i] = FunctionArguments(argument1.quantity, AlgebraFunctionType.DIV,
 						FunctionArguments(1, AlgebraFunctionType.MUL, CloneAlgebraFunction(argument1), argument2.arguments[0]),
 						argument2.arguments[1]
 					);
+					PrintDebug("Multiply into numerator of DIV");
 				}
 				newFunction.arguments.splice(j, 1);
-				return { collapsed: true, algebraFunction: newFunction };
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: newFunction.id };
 			}
 			if (argument1.functionType == AlgebraFunctionType.ADD) // Distribute across add function
 			{
 				for (let argIndex = 0; argIndex < argument1.arguments.length; argIndex++) {
 					argument1.arguments[argIndex] = FunctionArguments(argument1.quantity, AlgebraFunctionType.MUL,
-						CloneAlgebraFunction(argument1.arguments[argIndex]),
-						CloneAlgebraFunction(argument2)
+						CloneAlgebraFunction(argument1.arguments[argIndex], true),
+						CloneAlgebraFunction(argument2, true)
 					);
 				}
 				newFunction.arguments[i] = argument1;
 				newFunction.arguments.splice(j, 1);
-				return { collapsed: true, algebraFunction: newFunction };
+				PrintDebug(argument2.functionType == AlgebraFunctionType.ADD ? "Cross multiply ADD functions" : "Distribute MUL argument into ADD function");
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: newFunction.id };
 			}
 			if (CalculateResultHashes(argument1).mulHash == CalculateResultHashes(argument2).mulHash) {
 				const function1Exponent = argument1.functionType == AlgebraFunctionType.EXPONENTIAL ? argument1.arguments[1] : FunctionPrimitive(1);
@@ -150,7 +172,8 @@ function Mul(algebraFunction: AlgebraFunction): FunctionResult {
 				);
 				newFunction.arguments[i] = exponential;
 				newFunction.arguments.splice(j, 1);
-				return { collapsed: true, algebraFunction: newFunction };
+				PrintDebug("Promote compatible MUL arguments to EXP");
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: newFunction.id };
 			}
 		}
 	}
@@ -164,11 +187,13 @@ function Exp(algebraFunction: AlgebraFunction): FunctionResult {
 	if (exponent.functionType == AlgebraFunctionType.EXPONENTIAL) { // Fold down nested exponents
 		const newFunction = FunctionArguments(exponent.quantity, AlgebraFunctionType.MUL, CloneAlgebraFunction(exponent.arguments[0]), CloneAlgebraFunction(exponent.arguments[1]));
 		algebraFunction.arguments[1] = newFunction;
-		return { collapsed: true, algebraFunction };
+		PrintDebug("Fold down nested exponents");
+		return { collapsed: true, algebraFunction, collapsedFunctionId: exponent.id };
 	}
 	if (exponent.functionType == AlgebraFunctionType.PRIMITIVE && exponent.symbol == AlgebraSymbol.NUMBER) {
 		if (exponent.quantity == 0) {
-			return { collapsed: true, algebraFunction: FunctionPrimitive(algebraFunction.quantity) };
+			PrintDebug("Convert value with exponent of 0 into 1");
+			return { collapsed: true, algebraFunction: FunctionPrimitive(algebraFunction.quantity), collapsedFunctionId: algebraFunction.id };
 		}
 		if (exponent.quantity < 0) {
 			const newFunction = FunctionArguments(algebraFunction.quantity, AlgebraFunctionType.DIV,
@@ -178,15 +203,22 @@ function Exp(algebraFunction: AlgebraFunction): FunctionResult {
 					FunctionPrimitive(exponent.quantity * -1)
 				)
 			);
-			return { collapsed: true, algebraFunction: newFunction };
+			PrintDebug("Convert negative exponent into 1 / positive exponent");
+			return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: algebraFunction.id };
 		}
 		else if (!(expBase.functionType == AlgebraFunctionType.PRIMITIVE && expBase.symbol != AlgebraSymbol.NUMBER) || exponent.quantity == 1) {
 			if (exponent.quantity > 0) {
+				if (exponent.quantity == 1) {
+					PrintDebug("Convert value with exponent of 1 into raw value");
+				}
+				else {
+					PrintDebug("Convert numeric exponent to repeated MUL");
+				}
 				const newFunction = FunctionArguments(algebraFunction.quantity, AlgebraFunctionType.MUL);
 				for (let i = 0; i < exponent.quantity; i++) {
-					newFunction.arguments.push(CloneAlgebraFunction(algebraFunction.arguments[0]));
+					newFunction.arguments.push(CloneAlgebraFunction(algebraFunction.arguments[0], true));
 				}
-				return { collapsed: true, algebraFunction: newFunction };
+				return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: algebraFunction.id };
 			}
 		}
 	}
@@ -197,7 +229,8 @@ function Div(algebraFunction: AlgebraFunction): FunctionResult {
 	const numerator = algebraFunction.arguments[0];
 	const denominator = algebraFunction.arguments[1];
 	if (denominator.functionType == AlgebraFunctionType.PRIMITIVE && denominator.symbol == AlgebraSymbol.NUMBER && denominator.quantity == 1) {
-		return { collapsed: true, algebraFunction: numerator };
+		PrintDebug("Fold down DIV where denominator = 1");
+		return { collapsed: true, algebraFunction: numerator, collapsedFunctionId: algebraFunction.id };
 	}
 	// function / Div = Multiply by reciprocal
 	const numeratorIsDiv = numerator.functionType == AlgebraFunctionType.DIV;
@@ -213,17 +246,41 @@ function Div(algebraFunction: AlgebraFunction): FunctionResult {
 				denominatorIsDiv ? denominator.arguments[0] : denominator
 			)
 		);
-		return { collapsed: true, algebraFunction: newFunction };
+		PrintDebug("Replace nested DIV with reciprocal MUL");
+		return { collapsed: true, algebraFunction: newFunction, collapsedFunctionId: algebraFunction.id };
 	}
 	if (CalculateResultHashes(numerator).exactHash == CalculateResultHashes(denominator).exactHash) {
-		return { collapsed: true, algebraFunction: FunctionPrimitive(1) };
+		PrintDebug("Fold down identical numerator / denominator into 1");
+		return { collapsed: true, algebraFunction: FunctionPrimitive(1), collapsedFunctionId: algebraFunction.id };
 	}
+	if (numerator.functionType == AlgebraFunctionType.ADD) // If even one term in the numerator add function is divisible, split into ADD(DIV + DIV)
+	{
+		for (var i = 0; i < numerator.arguments.length; i++) {
+			var result = Div(FunctionArguments(1, AlgebraFunctionType.DIV, numerator.arguments[i], denominator));
+			if (result.collapsed) {
+				var numeratorClone = CloneAlgebraFunction(numerator);
+				numeratorClone.arguments.splice(i, 1);
+				var func: FunctionResult = {
+					collapsed: true,
+					algebraFunction: FunctionArguments(1, AlgebraFunctionType.ADD,
+						FunctionArguments(1, AlgebraFunctionType.DIV, CloneAlgebraFunction(numerator.arguments[i], true), denominator),
+						FunctionArguments(1, AlgebraFunctionType.DIV, numeratorClone, CloneAlgebraFunction(denominator, true))
+					),
+					collapsedFunctionId: algebraFunction.id
+				};
+				PrintDebug("Partial division by splitting into multiple fractions");
+				return func;
+			}
+		}
+	}
+
 	const dividedNumerator = DivInternal(numerator, denominator);
 
 	if (dividedNumerator.collapsed) {
 		algebraFunction.arguments[0] = dividedNumerator.remainder;
 		algebraFunction.arguments[1] = (DivInternal(denominator, dividedNumerator.divisor) as DivisionSuccess).remainder;
-		return { collapsed: true, algebraFunction };
+		PrintDebug("Numerator is directly divisible by denominator");
+		return { collapsed: true, algebraFunction, collapsedFunctionId: algebraFunction.id };
 	}
 	else {
 		for (const prime of primesGenerated) {
@@ -232,7 +289,8 @@ function Div(algebraFunction: AlgebraFunction): FunctionResult {
 			if (tryNumerator.collapsed && tryDenominator.collapsed) {
 				algebraFunction.arguments[0] = tryNumerator.remainder;
 				algebraFunction.arguments[1] = tryDenominator.remainder;
-				return { collapsed: true, algebraFunction };
+				PrintDebug(`Numerator and Denominator can be divided by common factor ${prime}`);
+				return { collapsed: true, algebraFunction, collapsedFunctionId: algebraFunction.id };
 			}
 		}
 		for (const symbol of [AlgebraSymbol.NUMBER, AlgebraSymbol.A, AlgebraSymbol.B, AlgebraSymbol.X, AlgebraSymbol.Y]) {
@@ -241,7 +299,8 @@ function Div(algebraFunction: AlgebraFunction): FunctionResult {
 			if (tryNumerator.collapsed && tryDenominator.collapsed && tryNumerator.divisor.symbol == tryDenominator.divisor.symbol) {
 				algebraFunction.arguments[0] = tryNumerator.remainder;
 				algebraFunction.arguments[1] = tryDenominator.remainder;
-				return { collapsed: true, algebraFunction };
+				PrintDebug(`Numerator and Denominator can be divided by common factor ${symbol}`);
+				return { collapsed: true, algebraFunction, collapsedFunctionId: algebraFunction.id };
 			}
 		}
 	}
@@ -287,11 +346,10 @@ function DivInternal(numerator: AlgebraFunction, denominator: AlgebraFunction): 
 		return { collapsed: false };
 	}
 	else if (clonedNumerator.functionType == AlgebraFunctionType.PRIMITIVE || clonedNumerator.functionType == AlgebraFunctionType.EXPONENTIAL) {
-
 		if (CalculateResultHashes(clonedNumerator).mulHash == CalculateResultHashes(clonedDenominator).mulHash) {
 
-			const numeratorExponentContents = numerator.functionType == AlgebraFunctionType.EXPONENTIAL ? numerator.arguments[1] : FunctionPrimitive(1);
-			const denominatorExponentContents = denominator.functionType == AlgebraFunctionType.EXPONENTIAL ? denominator.arguments[1] : FunctionPrimitive(1);
+			const numeratorExponentContents = numerator.functionType == AlgebraFunctionType.EXPONENTIAL ? CloneAlgebraFunction(numerator.arguments[1], true) : FunctionPrimitive(1);
+			const denominatorExponentContents = denominator.functionType == AlgebraFunctionType.EXPONENTIAL ? CloneAlgebraFunction(denominator.arguments[1], true) : FunctionPrimitive(1);
 			const newExponent = FunctionArguments(1, AlgebraFunctionType.ADD, numeratorExponentContents, FunctionArguments(1, AlgebraFunctionType.MUL, FunctionPrimitive(-1), denominatorExponentContents));
 			const newBase = CloneAlgebraFunction(numerator.functionType == AlgebraFunctionType.EXPONENTIAL ? numerator.arguments[0] : numerator);
 			newBase.quantity = 1;
@@ -310,7 +368,8 @@ export function FunctionPrimitive(quantity: number, symbol: AlgebraSymbol = Alge
 		quantity: quantity,
 		symbol: symbol,
 		functionType: AlgebraFunctionType.PRIMITIVE,
-		arguments: []
+		arguments: [],
+		id: nextFunctionId++
 	};
 }
 
@@ -319,7 +378,8 @@ export function FunctionArguments(quantity: number, functionType: AlgebraFunctio
 		quantity: quantity,
 		functionType: functionType,
 		arguments: functionArguments,
-		symbol: AlgebraSymbol.NUMBER
+		symbol: AlgebraSymbol.NUMBER,
+		id: nextFunctionId++
 	};
 }
 
@@ -354,39 +414,108 @@ function CalculateResultHashes(algebraFunction: AlgebraFunction): ResultHashes {
 	return resultHashes;
 }
 
-export function PrintFunctions(algebraFunction: AlgebraFunction): string {
+export function PrintFunctions(algebraFunction: AlgebraFunction, modifiedFunctionId = -1): string {
+	let output = "";
+	let modifiedMatched = false;
+	const toInspect: Printable[] = [{ isString: false, algebraFunction }];
+	while (toInspect.length > 0) {
+		const current = toInspect[toInspect.length - 1];
+		toInspect.splice(toInspect.length - 1, 1);
+		if (current.isString === true) {
+			output += current.stringValue;
+		} else {
+			if (modifiedFunctionId == current.algebraFunction.id) {
+				modifiedMatched = true;
+				output += "__MODIFIED__";
+				toInspect.push({ isString: true, stringValue: "__MODIFIED__" });
+			}
+			if (current.algebraFunction.functionType == AlgebraFunctionType.PRIMITIVE) {
+				output += current.algebraFunction.quantity.toString() + (current.algebraFunction.symbol != AlgebraSymbol.NUMBER ? current.algebraFunction.symbol : "");
+			}
+			else {
+				toInspect.push({ isString: true, stringValue: ")" });
+				for (let i = current.algebraFunction.arguments.length - 1; i >= 0; i--) {
+					if (i < current.algebraFunction.arguments.length - 1) {
+						let separator = "+";
+						switch (current.algebraFunction.functionType) {
+							case AlgebraFunctionType.MUL: separator = "*"; break;
+							case AlgebraFunctionType.EXPONENTIAL: separator = "^"; break;
+							case AlgebraFunctionType.DIV: separator = "/"; break;
+						}
+						toInspect.push({ isString: true, stringValue: ` ${separator} ` });
+					}
+					toInspect.push({ isString: false, algebraFunction: current.algebraFunction.arguments[i] });
+				}
+				toInspect.push({ isString: true, stringValue: `${current.algebraFunction.quantity}(` });
+			}
+		}
+	}
+	if (modifiedFunctionId > 0 && !modifiedMatched) {
+		throw new Error("Error: the provided modifiedFunctionId could not be found.");
+	}
+	return output;
+}
+
+export function PrintFunctionsLatex(algebraFunction: AlgebraFunction): string {
 	let output = "";
 	const toInspect: Printable[] = [{ isString: false, algebraFunction }];
 	while (toInspect.length > 0) {
 		const current = toInspect[toInspect.length - 1];
 		toInspect.splice(toInspect.length - 1, 1);
-		if (current.isString) {
+		if (current.isString === true) {
 			output += current.stringValue;
 		}
 		else if (current.algebraFunction.functionType == AlgebraFunctionType.PRIMITIVE) {
-			output += current.algebraFunction.quantity.toString() + (current.algebraFunction.symbol != AlgebraSymbol.NUMBER ? current.algebraFunction.symbol : "");
+			var quantity = current.algebraFunction.quantity.toString();
+			if (current.algebraFunction.symbol != AlgebraSymbol.NUMBER) {
+				if (quantity === "1") {
+					quantity = "";
+				} else if (quantity === "-1") {
+					quantity = "-";
+				}
+			}
+			output += quantity + (current.algebraFunction.symbol != AlgebraSymbol.NUMBER ? current.algebraFunction.symbol.toLocaleLowerCase() : "");
 		}
 		else {
-			toInspect.push({ isString: true, stringValue: ")" });
+			if (current.algebraFunction.quantity !== 1 && current.algebraFunction.functionType == AlgebraFunctionType.ADD) {
+				toInspect.push({ isString: true, stringValue: ")" });
+			}
+			if (current.algebraFunction.functionType === AlgebraFunctionType.DIV) {
+				toInspect.push({ isString: true, stringValue: "}" });
+			}
+			if (current.algebraFunction.functionType === AlgebraFunctionType.EXPONENTIAL) {
+				toInspect.push({ isString: true, stringValue: "}" });
+			}
 			for (let i = current.algebraFunction.arguments.length - 1; i >= 0; i--) {
 				if (i < current.algebraFunction.arguments.length - 1) {
 					let separator = "+";
 					switch (current.algebraFunction.functionType) {
 						case AlgebraFunctionType.MUL: separator = "*"; break;
-						case AlgebraFunctionType.EXPONENTIAL: separator = "^"; break;
-						case AlgebraFunctionType.DIV: separator = "/"; break;
+						case AlgebraFunctionType.EXPONENTIAL: separator = (current.algebraFunction.arguments[1].functionType == AlgebraFunctionType.ADD ? "(" : "") + "^{"; break;
+						case AlgebraFunctionType.DIV: separator = "\\over"; break;
 					}
 					toInspect.push({ isString: true, stringValue: ` ${separator} ` });
 				}
 				toInspect.push({ isString: false, algebraFunction: current.algebraFunction.arguments[i] });
 			}
-			toInspect.push({ isString: true, stringValue: `${current.algebraFunction.quantity}(` });
+			if (current.algebraFunction.functionType === AlgebraFunctionType.EXPONENTIAL && current.algebraFunction.arguments[1].functionType == AlgebraFunctionType.ADD) {
+				toInspect.push({ isString: true, stringValue: "(" });
+			}
+			if (current.algebraFunction.functionType === AlgebraFunctionType.DIV) {
+				toInspect.push({ isString: true, stringValue: "{" });
+			}
+			if (current.algebraFunction.quantity !== 1) {
+				toInspect.push({ isString: true, stringValue: `${current.algebraFunction.quantity}` });
+				if (current.algebraFunction.functionType == AlgebraFunctionType.ADD) {
+					toInspect.push({ isString: true, stringValue: `${current.algebraFunction.quantity}` });
+				}
+			}
 		}
 	}
 	return output;
 }
 
-export function CloneAlgebraFunction(algebraFunction: AlgebraFunction): AlgebraFunction {
+export function CloneAlgebraFunction(algebraFunction: AlgebraFunction, newId = false): AlgebraFunction {
 	const newArguments: AlgebraFunction[] = [];
 	if (algebraFunction.arguments != null) {
 		for (const argument of algebraFunction.arguments) {
@@ -397,7 +526,8 @@ export function CloneAlgebraFunction(algebraFunction: AlgebraFunction): AlgebraF
 		arguments: newArguments,
 		quantity: algebraFunction.quantity,
 		functionType: algebraFunction.functionType,
-		symbol: algebraFunction.symbol
+		symbol: algebraFunction.symbol,
+		id: newId ? nextFunctionId++ : algebraFunction.id
 	};
 }
 
@@ -407,6 +537,16 @@ export enum AlgebraSymbol {
 	B = "B",
 	X = "X",
 	Y = "Y",
+}
+
+export function AlgebraSymbolFromChar(inputChar: string) {
+	switch (inputChar[0].toLocaleLowerCase()) {
+		case 'a': return AlgebraSymbol.A;
+		case 'b': return AlgebraSymbol.B;
+		case 'x': return AlgebraSymbol.X;
+		case 'y': return AlgebraSymbol.Y;
+	}
+	throw new Error("Error: unsupported pronumeral, try x | y | a | b");
 }
 
 export enum AlgebraFunctionType {
@@ -423,6 +563,7 @@ export type AlgebraFunction =
 		quantity: number;
 		functionType: AlgebraFunctionType;
 		symbol: AlgebraSymbol; // Only used for primitives
+		id: number;
 	}
 
 type ResultHashes =
@@ -445,6 +586,7 @@ type FunctionResult =
 	{
 		collapsed: boolean;
 		algebraFunction: AlgebraFunction;
+		collapsedFunctionId?: number;
 	}
 
 type Printable =
