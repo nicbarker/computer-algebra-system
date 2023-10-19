@@ -226,6 +226,14 @@ namespace Algebra
 				PrintDebug($"Fold down nested exponents");
 				return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = exponent.id };
 			}
+			else if (expBase.functionType == FunctionType.EXPONENTIAL)
+			{ // Fold down nested exponents
+				var newExponent = FunctionArguments(1, FunctionType.MUL, expBase.arguments[1].Clone(), exponent.Clone());
+				function.arguments[1] = newExponent;
+				function.arguments[0] = expBase.arguments[0].Clone();
+				PrintDebug($"Multiply out exponent as base for nested exponent");
+				return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = expBase.id };
+			}
 			if (exponent.functionType == FunctionType.PRIMITIVE && exponent.symbol == Symbol.NUMBER)
 			{
 				if (exponent.quantity == 0)
@@ -266,6 +274,21 @@ namespace Algebra
 					}
 				}
 			}
+			// Square root
+			else if (exponent.functionType == FunctionType.DIV)
+			{
+				if (exponent.arguments[1].functionType == FunctionType.PRIMITIVE && exponent.arguments[1].symbol == Symbol.NUMBER
+					&& expBase.functionType == FunctionType.PRIMITIVE && expBase.symbol == Symbol.NUMBER)
+				{
+					var result = Math.Pow(expBase.quantity, 1d / exponent.arguments[1].quantity);
+					if (Math.Floor(result) == result)
+					{
+						PrintDebug($"Square root of primitive number");
+						return new FunctionResult { collapsed = true, function = FunctionPrimitive((int)result), collapsedFunctionId = function.id };
+					}
+					return new FunctionResult { collapsed = false, function = function };
+				}
+			}
 			return new FunctionResult { collapsed = false, function = function };
 		}
 
@@ -284,11 +307,11 @@ namespace Algebra
 			if (numeratorIsDiv || denominatorIsDiv)
 			{
 				var newFunction = FunctionArguments(function.quantity, FunctionType.MUL,
-					FunctionArguments(numerator.quantity, FunctionType.DIV,
+					FunctionArguments(1, FunctionType.DIV,
 						numeratorIsDiv ? numerator.arguments[0] : numerator,
 						numeratorIsDiv ? numerator.arguments[1] : FunctionPrimitive(1)
 					),
-					FunctionArguments(denominator.quantity, FunctionType.DIV,
+					FunctionArguments(1, FunctionType.DIV,
 						denominatorIsDiv ? denominator.arguments[1] : FunctionPrimitive(1),
 						denominatorIsDiv ? denominator.arguments[0] : denominator
 					)

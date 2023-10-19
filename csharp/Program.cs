@@ -224,6 +224,14 @@ CheckFunctionOutput("Divide By Exponential", "1(2 / 1X)", FunctionArguments(1, F
     )
 ));
 
+CheckFunctionOutput("Divide DIV", "1(25 / 1X)", FunctionArguments(1, FunctionType.DIV,
+    FunctionArguments(1, FunctionType.DIV,
+        FunctionPrimitive(125),
+        FunctionPrimitive(1, Symbol.X)
+    ),
+    FunctionPrimitive(5)
+));
+
 CheckFunctionOutput("Divide By Exact Match", "1", FunctionArguments(1, FunctionType.DIV,
     FunctionArguments(1, FunctionType.ADD,
         FunctionPrimitive(1, Symbol.X),
@@ -317,3 +325,44 @@ CheckFunctionOutput("Partial Division", "1(1(1(1X ^ 2) / 1(1Y ^ 2)) + 1(10X / 1Y
         FunctionPrimitive(2)
     )
 );
+
+CheckFunctionOutput("Primitive square root", "2",
+    FunctionArguments(1, FunctionType.EXPONENTIAL,
+        FunctionPrimitive(8),
+        FunctionArguments(1, FunctionType.DIV,
+            FunctionPrimitive(1),
+            FunctionPrimitive(3)
+        )
+    )
+);
+
+
+CheckFunctionOutput("Nested square root", "1(1X ^ 1(1 / 4))",
+    FunctionArguments(1, FunctionType.EXPONENTIAL,
+        FunctionArguments(1, FunctionType.EXPONENTIAL,
+            FunctionPrimitive(1, Symbol.X),
+            FunctionArguments(1, FunctionType.DIV,
+                FunctionPrimitive(1),
+                FunctionPrimitive(2)
+            )
+        ),
+        FunctionArguments(1, FunctionType.DIV,
+            FunctionPrimitive(1),
+            FunctionPrimitive(2)
+        )
+    )
+);
+
+CheckFunctionOutput("Exponential square root", "1(1X ^ 1(1 / 2))",
+    FunctionArguments(1, FunctionType.EXPONENTIAL,
+        FunctionArguments(1, FunctionType.EXPONENTIAL,
+            FunctionPrimitive(1, Symbol.X),
+            FunctionArguments(1, FunctionType.DIV,
+                FunctionPrimitive(1),
+                FunctionPrimitive(4)
+            )
+        ),
+        FunctionPrimitive(2)
+    )
+);
+

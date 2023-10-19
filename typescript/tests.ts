@@ -1,4 +1,5 @@
-import { AlgebraConfig, AlgebraFunction, AlgebraFunctionType, AlgebraSymbol, CloneAlgebraFunction, ExecuteFunction, FunctionArguments, FunctionPrimitive, PrintFunctions, TestResult } from "./algebra";
+/// <reference types="node" />
+import { AlgebraConfig, AlgebraFunction, AlgebraFunctionType, AlgebraSymbol, CloneAlgebraFunction, ExecuteFunction, FunctionArguments, FunctionPrimitive, PrintFunctions, PrintFunctionsLatex, TestResult } from "./algebra";
 
 var debug = process.argv.length > 2 && process.argv[2] == "DEBUG";
 function CheckFunctionOutput(name: string, assert: string, algebraFunction: AlgebraFunction) {
@@ -192,6 +193,15 @@ CheckFunctionOutput("Divide By Exponential", "1(2 / 1X)", FunctionArguments(1, A
 	)
 ));
 
+CheckFunctionOutput("Divide DIV", "1(25 / 1X)", FunctionArguments(1, AlgebraFunctionType.DIV,
+	FunctionArguments(1, AlgebraFunctionType.DIV,
+		FunctionPrimitive(125),
+		FunctionPrimitive(1, AlgebraSymbol.X)
+	),
+	FunctionPrimitive(5),
+));
+
+
 CheckFunctionOutput("Divide By Exact Match", "1", FunctionArguments(1, AlgebraFunctionType.DIV,
 	FunctionArguments(1, AlgebraFunctionType.ADD,
 		FunctionPrimitive(1, AlgebraSymbol.X),
@@ -230,7 +240,7 @@ CheckFunctionOutput("Divide Add By Common Pronumeral", "1(1(3X + 4) / 1(1A + 2Y)
 	)
 ));
 
-CheckFunctionOutput("Add Fractions", "1(1(1(1Y + 10 + 1X) / 3Y) + 2)", FunctionArguments(1, AlgebraFunctionType.ADD,
+CheckFunctionOutput("Add Fractions", "1(1(4 / 3) + 1(1(10 + 1X) / 3Y))", FunctionArguments(1, AlgebraFunctionType.ADD,
 	FunctionArguments(1, AlgebraFunctionType.DIV,
 		FunctionArguments(1, AlgebraFunctionType.ADD,
 			FunctionPrimitive(1, AlgebraSymbol.Y),
@@ -286,3 +296,41 @@ CheckFunctionOutput("Partial Division", "1(1(1(1X ^ 2) / 1(1Y ^ 2)) + 1(10X / 1Y
 	)
 );
 
+CheckFunctionOutput("Primitive square root", "2",
+	FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+		FunctionPrimitive(8),
+		FunctionArguments(1, AlgebraFunctionType.DIV,
+			FunctionPrimitive(1),
+			FunctionPrimitive(3)
+		)
+	)
+);
+
+CheckFunctionOutput("Nested square root", "1(1X ^ 1(1 / 4))",
+	FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+		FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+			FunctionPrimitive(1, AlgebraSymbol.X),
+			FunctionArguments(1, AlgebraFunctionType.DIV,
+				FunctionPrimitive(1),
+				FunctionPrimitive(2)
+			)
+		),
+		FunctionArguments(1, AlgebraFunctionType.DIV,
+			FunctionPrimitive(1),
+			FunctionPrimitive(2)
+		)
+	)
+);
+
+CheckFunctionOutput("Exponential square root", "1(1X ^ 1(1 / 2))",
+	FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+		FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+			FunctionPrimitive(1, AlgebraSymbol.X),
+			FunctionArguments(1, AlgebraFunctionType.DIV,
+				FunctionPrimitive(1),
+				FunctionPrimitive(4)
+			)
+		),
+		FunctionPrimitive(2)
+	)
+);
