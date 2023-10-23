@@ -27,16 +27,22 @@ void CheckFunctionOutput(string name, string assert, Function function)
     Algebra.Functions.DEBUG = false;
 }
 
-static void PrintFunctionsWithColors(string functionString)
+static void PrintFunctionsWithColors(string functionString, ConsoleColor consoleColor = ConsoleColor.Red)
 {
+    // Console.WriteLine(functionString);
     var split = functionString.Split("__MODIFIED__");
-    if (split.Length == 3)
+    if (split.Length > 1)
     {
-        Console.Write(split[0]);
-        Console.ForegroundColor = ConsoleColor.DarkBlue;
-        Console.Write(split[1]);
-        Console.ResetColor();
-        Console.WriteLine(split[2]);
+        for (var i = 0; i < split.Length; i++)
+        {
+            if (i % 2 == 1)
+            {
+                Console.ForegroundColor = consoleColor;
+            }
+            Console.Write(split[i]);
+            Console.ResetColor();
+        }
+        Console.WriteLine();
     }
     else
     {
@@ -53,23 +59,37 @@ static TestResult CheckFunctionOutputInternal(string name, string assert, Functi
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine($"{name}");
         Console.ForegroundColor = ConsoleColor.Cyan;
-        Console.WriteLine($"Starting value: {PrintFunctions(currentFunction)}");
+        Console.WriteLine($"Starting value: {PrintFunctionsWithoutColors(currentFunction)}");
         Console.WriteLine($"Expecting result: {assert}");
         Console.ResetColor();
     }
     for (var i = 0; i < 1000; i++)
     {
-        var resultString = PrintFunctions(currentFunction);
+        var resultString = PrintFunctionsWithoutColors(currentFunction);
         var result = ExecuteFunction(currentFunction);
         if (debug)
         {
-            if (!result.collapsed)
+            Console.ForegroundColor = ConsoleColor.Black;
+            if (result.collapsed && result.functionCollapseInfo.beforeFunctionIds != null)
             {
-                Console.ForegroundColor = ConsoleColor.Black;
-                Console.WriteLine("- Result");
-                Console.ResetColor();
+                var collapseType = (int)result.functionCollapseInfo.functionCollapseType;
+                var docs = collapseTypeDocumentation[collapseType].devMessage;
+                if (result.functionCollapseInfo.additionalInfo.functionType != FunctionType.NONE)
+                {
+                    docs = docs.Replace("?", PrintFunctionsWithoutColors(result.functionCollapseInfo.additionalInfo));
+                }
+                Console.WriteLine("- " + docs + " ↓");
             }
-            PrintFunctionsWithColors(PrintFunctions(currentFunction, result.collapsedFunctionId));
+            else if (!result.collapsed)
+            {
+                Console.WriteLine("- Result");
+            }
+            Console.ResetColor();
+            PrintFunctionsWithColors(PrintFunctions(currentFunction, result.functionCollapseInfo.beforeFunctionIds, result.functionCollapseInfo.functionCollapseType));
+            if (result.functionCollapseInfo.afterFunctionIds != null)
+            {
+                PrintFunctionsWithColors(PrintFunctions(result.function, result.functionCollapseInfo.afterFunctionIds, result.functionCollapseInfo.functionCollapseType), ConsoleColor.DarkBlue);
+            }
         }
         currentFunction = result.function;
         if (!result.collapsed)
@@ -101,7 +121,7 @@ static TestResult CheckFunctionOutputInternal(string name, string assert, Functi
         resultsList.Add(resultString);
     }
     Console.WriteLine("Error, hit infinite loop. Last function:");
-    Console.WriteLine(PrintFunctions(currentFunction));
+    Console.WriteLine(PrintFunctionsWithoutColors(currentFunction));
     return TestResult.INFINITE_LOOP;
 }
 
@@ -187,9 +207,14 @@ CheckFunctionOutput("Exponential Add", "1(1(1X ^ 3) + 3(1X ^ 2) + 3X + 1)", Func
     FunctionPrimitive(3)
 ));
 
-CheckFunctionOutput("Nested Exponential", "1(1X ^ 6(1Y * 1A))", FunctionArguments(1, FunctionType.EXPONENTIAL,
+CheckFunctionOutput("Nested Exponential as Exponent", "1(1X ^ 6(1Y * 1A))", FunctionArguments(1, FunctionType.EXPONENTIAL,
         FunctionPrimitive(1, Symbol.X),
         FunctionArguments(1, FunctionType.EXPONENTIAL, FunctionPrimitive(2, Symbol.Y), FunctionPrimitive(3, Symbol.A))
+));
+
+CheckFunctionOutput("Nested Exponential as Base", "1(2Y ^ 3(1A * 1X))", FunctionArguments(1, FunctionType.EXPONENTIAL,
+        FunctionArguments(1, FunctionType.EXPONENTIAL, FunctionPrimitive(2, Symbol.Y), FunctionPrimitive(3, Symbol.A)),
+        FunctionPrimitive(1, Symbol.X)
 ));
 
 CheckFunctionOutput("Basic Divide", "3", FunctionArguments(1, FunctionType.DIV, FunctionPrimitive(6), FunctionPrimitive(2)));
@@ -270,7 +295,18 @@ CheckFunctionOutput("Divide Add By Common Pronumeral", "1(1(3X + 4) / 1(1A + 2Y)
     )
 ));
 
-CheckFunctionOutput("Add Fractions", "1(1(4 / 3) + 1(1(10 + 1X) / 3Y))", FunctionArguments(1, FunctionType.ADD,
+CheckFunctionOutput("Add primitive fractions", "1", FunctionArguments(1, FunctionType.ADD,
+    FunctionArguments(1, FunctionType.DIV,
+        FunctionPrimitive(1),
+        FunctionPrimitive(3)
+    ),
+    FunctionArguments(1, FunctionType.DIV,
+        FunctionPrimitive(2),
+        FunctionPrimitive(3)
+    )
+));
+
+CheckFunctionOutput("Add Fractions", "1(1(1 / 3) + 1(1(10 + 1X) / 3Y) + 2)", FunctionArguments(1, FunctionType.ADD,
     FunctionArguments(1, FunctionType.DIV,
         FunctionArguments(1, FunctionType.ADD,
             FunctionPrimitive(1, Symbol.Y),
@@ -287,6 +323,17 @@ CheckFunctionOutput("Add Fractions", "1(1(4 / 3) + 1(1(10 + 1X) / 3Y))", Functio
     ),
     FunctionArguments(1, FunctionType.DIV, FunctionPrimitive(3), FunctionPrimitive(4)),
     FunctionArguments(1, FunctionType.DIV, FunctionPrimitive(5), FunctionPrimitive(4))
+));
+
+CheckFunctionOutput("Add Fractions With Same Denominator", "1(1(2A + 2B) / 3Y)", FunctionArguments(1, FunctionType.ADD,
+    FunctionArguments(1, FunctionType.DIV,
+        FunctionPrimitive(2, Symbol.A),
+        FunctionPrimitive(3, Symbol.Y)
+    ),
+    FunctionArguments(1, FunctionType.DIV,
+        FunctionPrimitive(2, Symbol.B),
+        FunctionPrimitive(3, Symbol.Y)
+    )
 ));
 
 CheckFunctionOutput("Divide Fractions", "1(1 / 1(1(1X ^ 3) * 1Y))", FunctionArguments(1, FunctionType.DIV,
@@ -363,6 +410,32 @@ CheckFunctionOutput("Exponential square root", "1(1X ^ 1(1 / 2))",
             )
         ),
         FunctionPrimitive(2)
+    )
+);
+
+CheckFunctionOutput("Complex Numerator", "1(12 + 6X + 1(1X ^ 2))",
+    FunctionArguments(1, FunctionType.DIV,
+        FunctionArguments(1, FunctionType.ADD,
+            FunctionArguments(1, FunctionType.EXPONENTIAL,
+                FunctionArguments(1, FunctionType.ADD,
+                    FunctionPrimitive(2),
+                    FunctionPrimitive(1, Symbol.X)
+                ),
+                FunctionPrimitive(3)
+            ),
+            FunctionArguments(-1, FunctionType.EXPONENTIAL,
+                FunctionPrimitive(2),
+                FunctionPrimitive(3)
+            )
+        ),
+        FunctionPrimitive(1, Symbol.X)
+    )
+);
+
+CheckFunctionOutput("Zero Numerator", "1",
+    FunctionArguments(1, FunctionType.ADD,
+        FunctionPrimitive(1),
+        FunctionArguments(1, FunctionType.DIV, FunctionPrimitive(0), FunctionPrimitive(1, Symbol.X))
     )
 );
 

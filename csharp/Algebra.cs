@@ -8,6 +8,32 @@ namespace Algebra
 		public static bool DEBUG = false;
 		public static int nextFunctionId = 1;
 
+		public static readonly FunctionCollapseTypeDocumentation[] collapseTypeDocumentation = new FunctionCollapseTypeDocumentation[] {
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.DISTRIBUTE_QUANTITY_INTO_FUNCTION, affectsQuantity = true, devMessage = "Distribute quantity into function arguments", humanReadableMessage = "Multiply inner terms by outer quantity (distribute)" },
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.HOIST_NESTED_FUNCTION_WITH_SAME_TYPE, devMessage = "Hoist nested function with same type", humanReadableMessage = "Hoist nested function with same type", internalOnly = true},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.EXTRACT_ARGUMENT_QUANTITY_INTO_FUNCTION, affectsQuantity = true, devMessage = "Extract argument quantities into outer MUL function", humanReadableMessage = "Extract argument quantities into outer MUL function", internalOnly = true},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.HOIST_SINGLE_ARGUMENT_INTO_PARENT, affectsQuantity = true, devMessage = "Hoist single argument into parent", humanReadableMessage = "Hoist single argument into parent", internalOnly = true},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.ELIMINATE_ZERO_TERMS, devMessage = "Eliminate ADD arguments with quantity 0", humanReadableMessage = "Remove terms in addition with a quantity of zero"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.COMBINE_DIV_WITH_MATCHING_DENOMINATOR, devMessage = "Combine DIV numerators with exactly matching denominator", humanReadableMessage = "Add together two fractions with the same denominator"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.COMBINE_ADDABLE_TERMS, devMessage = "Combine add-able function arguments", humanReadableMessage = "Combine addable terms together"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.MULTIPLY_PRIMITIVE_NUMBERS, affectsQuantity = true, devMessage = "Multiply primitive number function", humanReadableMessage = "Multiply numerical quantities together"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.MULTIPLY_DIV_FUNCTIONS, devMessage = "Straight multiply DIV numerator & denominator", humanReadableMessage = "Multiply numerator by numerator, and denominator by denominator"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.MULTIPLY_INTO_DIV_NUMERATOR, devMessage = "Multiply into DIV numerator argument", humanReadableMessage = "Multiply by fraction numerator"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.DISTRIBUTE_FUNCTION_INTO_ADD_ARGUMENTS, devMessage = "Distribute function into ADD arguments", humanReadableMessage = "Multiply by all addition terms (distribute)"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.MULTIPLY_EXPONENTS, devMessage = "Multiply and promote or increase exponent", humanReadableMessage = "Multiply two like terms together by adding their exponents"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.MULTIPLY_OUT_NESTED_EXPONENTS, devMessage = "Multiply out nested exponents", humanReadableMessage = "Combine nested exponents by multiplying powers"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.EXPONENT_IS_ZERO, devMessage = "Convert argument with exponent of 0 into 1", humanReadableMessage = "Convert term with exponent of 0 into 1"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.CONVERT_NEGATIVE_EXPONENT_TO_RECIPROCAL, devMessage = "Convert negative exponent into 1 / positive exponent", humanReadableMessage = "Convert negative exponent into 1 / positive exponent"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.CONVERT_NUMERIC_EXPONENT_TO_REPEATED_MUL, devMessage = "Convert numeric exponent to repeated MUL", humanReadableMessage = "Convert numeric exponent into repeated multiply"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.SQUARE_ROOT_OF_PRIMITIVE_NUMBER, devMessage = "Root of primitive number", humanReadableMessage = "Compute the root of a primitive value"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.COLLAPSE_DIV_WITH_DENOMINATOR_1, devMessage = "Collapse DIV with denominator = 1", humanReadableMessage = "Simplify fraction with denominator of 1"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.COLLAPSE_DIV_WITH_NUMERATOR_0, devMessage = "Collapse DIV with numerator = 0", humanReadableMessage = "Eliminate fraction with numerator of 0"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.CONVERT_NESTED_DIV_TO_RECIPROCAL_MUL, devMessage = "Convert nested DIV to reciprocal MUL", humanReadableMessage = "Simplified nested fractions by multiplying by the reciprocal of the denominator"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.COLLAPSE_VALUE_DIVIDED_BY_ITSELF, devMessage = "Collapse DIV with identical numerator and denominator to 1", humanReadableMessage = "Simplify fraction with identical numerator and denominator to 1"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.SPLIT_AND_DIVIDE_DIV, devMessage = "Split DIV with ADD numerator to allow partial division", humanReadableMessage = "Split the fraction numerator to allow division"},
+			new FunctionCollapseTypeDocumentation { functionCollapseType = FunctionCollapseType.DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR, devMessage = "Numerator and Denominator can be divided by common factor ?", humanReadableMessage = "Fraction numerator and denominator can be divided by common factor ?"}
+		};
+
 		public static void PrintDebug(string msg)
 		{
 			if (DEBUG)
@@ -31,16 +57,18 @@ namespace Algebra
 				// Multiply quantity into group
 				if (newFunction.quantity != 1 && new FunctionType[] { FunctionType.ADD, FunctionType.DIV }.Contains(newFunction.functionType))
 				{
+					var affectedFunctionIds = new int[newFunction.arguments.Count + 1];
+					affectedFunctionIds[0] = newFunction.id;
 					for (var i = 0; i < newFunction.arguments.Count; i++)
 					{
 						var argument = newFunction.arguments[i];
 						argument.quantity *= newFunction.quantity;
 						newFunction.arguments[i] = argument;
+						affectedFunctionIds[i + 1] = argument.id;
 						if (newFunction.functionType != FunctionType.ADD) break;
 					}
 					newFunction.quantity = 1;
-					PrintDebug("Distribute quantity into function arguments");
-					return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = newFunction.id };
+					return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DISTRIBUTE_QUANTITY_INTO_FUNCTION, beforeFunctionIds = affectedFunctionIds, afterFunctionIds = affectedFunctionIds } };
 				}
 
 				// Execute sub functions, break on collapse
@@ -50,11 +78,13 @@ namespace Algebra
 					if (result.collapsed)
 					{
 						newFunction.arguments[i] = result.function;
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = result.collapsedFunctionId };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = result.functionCollapseInfo };
 					}
 					// Hoist out Matryoshka doll add and mul functions
 					if ((newFunction.functionType == FunctionType.ADD || newFunction.functionType == FunctionType.MUL) && newFunction.functionType == result.function.functionType)
 					{
+						var oldId = newFunction.arguments[i].id;
+						var argumentIds = new List<int>();
 						newFunction.arguments.RemoveAt(i);
 						for (var j = result.function.arguments.Count - 1; j >= 0; j--)
 						{
@@ -64,9 +94,9 @@ namespace Algebra
 								toInsert.quantity *= result.function.quantity;
 							}
 							newFunction.arguments.Insert(i, toInsert);
+							argumentIds.Add(toInsert.id);
 						}
-						PrintDebug($"Hoist nested {newFunction.functionType} function");
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = result.function.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.HOIST_NESTED_FUNCTION_WITH_SAME_TYPE, beforeFunctionIds = new int[] { oldId }, afterFunctionIds = argumentIds.ToArray() } };
 					}
 					// Hoist quantity out into MUL function
 					if (newFunction.functionType == FunctionType.MUL && result.function.quantity != 1)
@@ -74,8 +104,7 @@ namespace Algebra
 						newFunction.quantity *= result.function.quantity;
 						result.function.quantity = 1;
 						newFunction.arguments[i] = result.function;
-						PrintDebug("Extract argument quantities into outer MUL function");
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = result.function.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.EXTRACT_ARGUMENT_QUANTITY_INTO_FUNCTION, beforeFunctionIds = new int[] { newFunction.id, result.function.id }, afterFunctionIds = new int[] { newFunction.id } } };
 					}
 					results.Add(result);
 				}
@@ -85,8 +114,7 @@ namespace Algebra
 				{
 					var result = results[0].function.Clone();
 					result.quantity *= newFunction.quantity;
-					PrintDebug("Hoist single argument into parent");
-					return new FunctionResult { collapsed = true, function = result, collapsedFunctionId = result.id };
+					return new FunctionResult { collapsed = true, function = result, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.HOIST_SINGLE_ARGUMENT_INTO_PARENT, beforeFunctionIds = new int[] { result.id }, afterFunctionIds = new int[] { result.id } } };
 				}
 				switch (function.functionType)
 				{
@@ -113,20 +141,24 @@ namespace Algebra
 					{
 						throw new Exception("Error: Add hash was null");
 					}
+					if (argument1.quantity == 0)
+					{
+						function.arguments.RemoveAt(i);
+						return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.ELIMINATE_ZERO_TERMS, beforeFunctionIds = new int[] { argument1.id } } };
+					}
 					if (argument1.functionType == FunctionType.DIV && argument2.functionType == FunctionType.DIV && CalculateResultHashes(argument1.arguments[1]).exactHash == CalculateResultHashes(argument2.arguments[1]).exactHash)
 					{
+						var numeratorIds = new int[] { argument1.arguments[0].id, argument2.arguments[0].id };
 						function.arguments[i].arguments[0] = FunctionArguments(1, FunctionType.ADD, argument1.arguments[0].Clone(), argument2.arguments[0].Clone());
 						function.arguments.RemoveAt(j);
-						PrintDebug("Add two exactly matching division functions");
-						return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = function.id };
+						return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.COMBINE_DIV_WITH_MATCHING_DENOMINATOR, beforeFunctionIds = numeratorIds, afterFunctionIds = new int[] { function.arguments[i].arguments[0].id } } };
 					}
 					if (argument1Hash.addHash == CalculateResultHashes(argument2).addHash)
 					{
 						argument1.quantity += argument2.quantity;
 						function.arguments[i] = argument1;
 						function.arguments.RemoveAt(j);
-						PrintDebug("Combine add-able arguments in ADD function");
-						return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = function.id };
+						return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.COMBINE_ADDABLE_TERMS, beforeFunctionIds = new int[] { argument1.id, argument2.id }, afterFunctionIds = new int[] { argument1.id } } };
 					}
 				}
 			}
@@ -145,55 +177,55 @@ namespace Algebra
 				{
 					if (i == j) continue;
 					var argument2 = newFunction.arguments[j];
-					if (argument1.quantity != 1 && argument2.quantity != 1)
-					{
-						argument1.quantity *= argument2.quantity;
-						newFunction.arguments[i] = argument1;
-						argument2.quantity = 1;
-						newFunction.arguments[j] = argument2;
-						PrintDebug($"Coalesce quantity into first MUL argument");
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = argument2.id };
-					}
 					if (IsPrimitiveNumber(argument2)) // Always multiply and combine primitive numbers
 					{
 						newFunction.arguments.RemoveAt(j);
-						PrintDebug("Multiply primitive numbers");
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = newFunction.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.MULTIPLY_PRIMITIVE_NUMBERS, beforeFunctionIds = new int[] { argument1.id, argument2.id }, afterFunctionIds = new int[] { argument1.id } } };
 					}
 					if (argument2.functionType == FunctionType.DIV) // Distribute into DIV
 					{
+						var functionCollapseInfo = new FunctionCollapseInfo { };
 						if (argument1.functionType == FunctionType.DIV) // Div / Div - Straight multiply to avoid convergence loop
 						{
 							newFunction.arguments[i] = FunctionArguments(argument1.quantity, FunctionType.DIV,
 								FunctionArguments(1, FunctionType.MUL, argument1.arguments[0].Clone(), argument2.arguments[0].Clone()),
 								FunctionArguments(1, FunctionType.MUL, argument1.arguments[1].Clone(), argument2.arguments[1].Clone())
 							);
-							PrintDebug($"Straight multiply DIV numerator & denominator");
+							functionCollapseInfo.functionCollapseType = FunctionCollapseType.MULTIPLY_DIV_FUNCTIONS;
+							functionCollapseInfo.beforeFunctionIds = new int[] { argument1.id, argument2.id };
+							functionCollapseInfo.afterFunctionIds = new int[] { newFunction.arguments[i].id };
 						}
 						else
 						{
+							var newNumerator = FunctionArguments(1, FunctionType.MUL, argument1.Clone(), argument2.arguments[0]);
 							newFunction.arguments[i] = FunctionArguments(argument1.quantity, FunctionType.DIV,
-								FunctionArguments(1, FunctionType.MUL, argument1.Clone(), argument2.arguments[0]),
+								newNumerator,
 								argument2.arguments[1]
 							);
-							PrintDebug($"Multiply into numerator of DIV");
+							functionCollapseInfo.functionCollapseType = FunctionCollapseType.MULTIPLY_INTO_DIV_NUMERATOR;
+							functionCollapseInfo.beforeFunctionIds = new int[] { argument1.id, argument2.arguments[0].id };
+							functionCollapseInfo.afterFunctionIds = new int[] { newNumerator.id };
 						}
 						newFunction.arguments.RemoveAt(j);
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = newFunction.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = functionCollapseInfo };
 					}
 					if (argument1.functionType == FunctionType.ADD) // Distribute across add function
 					{
+						var beforeFunctionIds = new int[argument1.arguments.Count + 1];
+						var afterFunctionIds = new int[argument1.arguments.Count];
+						beforeFunctionIds[0] = argument2.id;
 						for (var argIndex = 0; argIndex < argument1.arguments.Count; argIndex++)
 						{
+							beforeFunctionIds[argIndex + 1] = argument1.arguments[argIndex].id;
 							argument1.arguments[argIndex] = FunctionArguments(argument1.quantity, FunctionType.MUL,
 								argument1.arguments[argIndex].Clone(true),
 								argument2.Clone(true)
 							);
+							afterFunctionIds[argIndex] = argument1.arguments[argIndex].id;
 						}
 						newFunction.arguments[i] = argument1;
 						newFunction.arguments.RemoveAt(j);
-						PrintDebug(argument2.functionType == FunctionType.ADD ? $"Cross multiply ADD functions" : $"Distribute MUL argument into ADD function");
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = newFunction.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DISTRIBUTE_FUNCTION_INTO_ADD_ARGUMENTS, beforeFunctionIds = beforeFunctionIds, afterFunctionIds = afterFunctionIds } };
 					}
 					if (CalculateResultHashes(argument1).mulHash == CalculateResultHashes(argument2).mulHash)
 					{
@@ -206,8 +238,7 @@ namespace Algebra
 						);
 						newFunction.arguments[i] = exponential;
 						newFunction.arguments.RemoveAt(j);
-						PrintDebug($"Promote compatible MUL arguments to EXP");
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = newFunction.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.MULTIPLY_EXPONENTS, beforeFunctionIds = new int[] { argument1.id, argument2.id }, afterFunctionIds = new int[] { newFunction.arguments[i].id } } };
 					}
 				}
 			}
@@ -223,23 +254,21 @@ namespace Algebra
 			{ // Fold down nested exponents
 				var newFunction = FunctionArguments(exponent.quantity, FunctionType.MUL, exponent.arguments[0].Clone(), exponent.arguments[1].Clone());
 				function.arguments[1] = newFunction;
-				PrintDebug($"Fold down nested exponents");
-				return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = exponent.id };
+				return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.MULTIPLY_OUT_NESTED_EXPONENTS, beforeFunctionIds = new int[] { exponent.arguments[0].id, exponent.arguments[1].id }, afterFunctionIds = new int[] { newFunction.id } } };
 			}
 			else if (expBase.functionType == FunctionType.EXPONENTIAL)
 			{ // Fold down nested exponents
 				var newExponent = FunctionArguments(1, FunctionType.MUL, expBase.arguments[1].Clone(), exponent.Clone());
 				function.arguments[1] = newExponent;
 				function.arguments[0] = expBase.arguments[0].Clone();
-				PrintDebug($"Multiply out exponent as base for nested exponent");
-				return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = expBase.id };
+				return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.MULTIPLY_OUT_NESTED_EXPONENTS, beforeFunctionIds = new int[] { expBase.arguments[1].id, exponent.id }, afterFunctionIds = new int[] { newExponent.id } } };
 			}
 			if (exponent.functionType == FunctionType.PRIMITIVE && exponent.symbol == Symbol.NUMBER)
 			{
 				if (exponent.quantity == 0)
 				{
-					PrintDebug($"Convert value with exponent of 0 into 1");
-					return new FunctionResult { collapsed = true, function = FunctionPrimitive(function.quantity), collapsedFunctionId = function.id };
+					var newPrimitive = FunctionPrimitive(function.quantity);
+					return new FunctionResult { collapsed = true, function = newPrimitive, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.EXPONENT_IS_ZERO, beforeFunctionIds = new int[] { function.id }, afterFunctionIds = new int[] { newPrimitive.id } } };
 				}
 				if (exponent.quantity < 0)
 				{
@@ -250,31 +279,25 @@ namespace Algebra
 							FunctionPrimitive(exponent.quantity * -1)
 						)
 					);
-					PrintDebug($"Convert negative exponent into 1 / positive exponent");
-					return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = function.id };
+					return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.CONVERT_NEGATIVE_EXPONENT_TO_RECIPROCAL, beforeFunctionIds = new int[] { exponent.id }, afterFunctionIds = new int[] { newFunction.id } } };
 				}
 				else if (!(expBase.functionType == FunctionType.PRIMITIVE && expBase.symbol != Symbol.NUMBER) || exponent.quantity == 1)
 				{
 					if (exponent.quantity > 0)
 					{
-						if (exponent.quantity == 1)
-						{
-							PrintDebug($"Convert value with exponent of 1 into raw value");
-						}
-						else
-						{
-							PrintDebug($"Convert numeric exponent to repeated MUL");
-						}
+						var newFunctionIds = new List<int>();
 						var newFunction = FunctionArguments(function.quantity, FunctionType.MUL);
 						for (var i = 0; i < exponent.quantity; i++)
 						{
-							newFunction.arguments.Add(function.arguments[0].Clone(true));
+							var functionBase = function.arguments[0].Clone(true);
+							newFunction.arguments.Add(functionBase);
+							newFunctionIds.Add(functionBase.id);
 						}
-						return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = function.id };
+						return new FunctionResult { collapsed = true, function = newFunction, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.CONVERT_NUMERIC_EXPONENT_TO_REPEATED_MUL, beforeFunctionIds = new int[] { exponent.id }, afterFunctionIds = newFunctionIds.ToArray() } };
 					}
 				}
 			}
-			// Square root
+			// Root of primitive number
 			else if (exponent.functionType == FunctionType.DIV)
 			{
 				if (exponent.arguments[1].functionType == FunctionType.PRIMITIVE && exponent.arguments[1].symbol == Symbol.NUMBER
@@ -283,8 +306,8 @@ namespace Algebra
 					var result = Math.Pow(expBase.quantity, 1d / exponent.arguments[1].quantity);
 					if (Math.Floor(result) == result)
 					{
-						PrintDebug($"Square root of primitive number");
-						return new FunctionResult { collapsed = true, function = FunctionPrimitive((int)result), collapsedFunctionId = function.id };
+						var newPrimitive = FunctionPrimitive((int)result);
+						return new FunctionResult { collapsed = true, function = newPrimitive, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.SQUARE_ROOT_OF_PRIMITIVE_NUMBER, beforeFunctionIds = new int[] { expBase.id }, afterFunctionIds = new int[] { newPrimitive.id } } };
 					}
 					return new FunctionResult { collapsed = false, function = function };
 				}
@@ -298,8 +321,11 @@ namespace Algebra
 			var denominator = function.arguments[1];
 			if (denominator.functionType == FunctionType.PRIMITIVE && denominator.symbol == Symbol.NUMBER && denominator.quantity == 1)
 			{
-				PrintDebug($"Fold down DIV where denominator = 1");
-				return new FunctionResult { collapsed = true, function = numerator, collapsedFunctionId = function.id };
+				return new FunctionResult { collapsed = true, function = numerator, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.COLLAPSE_DIV_WITH_DENOMINATOR_1, beforeFunctionIds = new int[] { denominator.id }, afterFunctionIds = new int[] { } } };
+			}
+			if (numerator.functionType == FunctionType.PRIMITIVE && numerator.symbol == Symbol.NUMBER && numerator.quantity == 0)
+			{
+				return new FunctionResult { collapsed = true, function = numerator, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.COLLAPSE_DIV_WITH_NUMERATOR_0, beforeFunctionIds = new int[] { numerator.id }, afterFunctionIds = new int[] { numerator.id } } };
 			}
 			// function / Div = Multiply by reciprocal
 			var numeratorIsDiv = numerator.functionType == FunctionType.DIV;
@@ -316,14 +342,49 @@ namespace Algebra
 						denominatorIsDiv ? denominator.arguments[0] : denominator
 					)
 				);
-				PrintDebug($"Replace nested DIV with reciprocal MUL");
-				return new FunctionResult { collapsed = true, function = newFunction, collapsedFunctionId = function.id };
+				return new FunctionResult
+				{
+					collapsed = true,
+					function = newFunction,
+					functionCollapseInfo = new FunctionCollapseInfo
+					{
+						functionCollapseType = FunctionCollapseType.CONVERT_NESTED_DIV_TO_RECIPROCAL_MUL,
+						beforeFunctionIds = new int[] { denominator.id },
+						afterFunctionIds = new int[] { newFunction.arguments[1].id }
+					}
+				};
 			}
 			if (CalculateResultHashes(numerator).exactHash == CalculateResultHashes(denominator).exactHash)
 			{
-				PrintDebug($"Fold down identical numerator / denominator into 1");
-				return new FunctionResult { collapsed = true, function = FunctionPrimitive(1), collapsedFunctionId = function.id };
+				var newPrimitive = FunctionPrimitive(1);
+				return new FunctionResult { collapsed = true, function = newPrimitive, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.COLLAPSE_VALUE_DIVIDED_BY_ITSELF, beforeFunctionIds = new int[] { numerator.id, denominator.id }, afterFunctionIds = new int[] { newPrimitive.id } } };
 			}
+
+			foreach (var prime in primesGenerated)
+			{
+				var primePrimitive = FunctionPrimitive(prime);
+				var tryNumerator = DivInternal(numerator, primePrimitive);
+				var tryDenominator = DivInternal(denominator, primePrimitive);
+				if (tryNumerator.collapsed && tryDenominator.collapsed)
+				{
+					function.arguments[0] = tryNumerator.remainder;
+					function.arguments[1] = tryDenominator.remainder;
+					return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR, beforeFunctionIds = new int[] { numerator.id, denominator.id }, afterFunctionIds = new int[] { function.arguments[0].id, function.arguments[1].id }, additionalInfo = primePrimitive } };
+				}
+			}
+			foreach (Symbol symbol in Enum.GetValues(typeof(Symbol)))
+			{
+				var symbolPrimitive = FunctionPrimitive(1, symbol);
+				var tryNumerator = DivInternal(numerator, symbolPrimitive);
+				var tryDenominator = DivInternal(denominator, symbolPrimitive);
+				if (tryNumerator.collapsed && tryDenominator.collapsed && tryNumerator.divisor.symbol == tryDenominator.divisor.symbol)
+				{
+					function.arguments[0] = tryNumerator.remainder;
+					function.arguments[1] = tryDenominator.remainder;
+					return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR, beforeFunctionIds = new int[] { numerator.id, denominator.id }, afterFunctionIds = new int[] { function.arguments[0].id, function.arguments[1].id }, additionalInfo = symbolPrimitive } };
+				}
+			}
+
 			if (numerator.functionType == FunctionType.ADD) // If even one term in the numerator add function is divisible, split into ADD(DIV + DIV)
 			{
 				for (var i = 0; i < numerator.arguments.Count; i++)
@@ -333,16 +394,14 @@ namespace Algebra
 					{
 						var numeratorClone = numerator.Clone();
 						numeratorClone.arguments.RemoveAt(i);
+						var lhs = FunctionArguments(1, FunctionType.DIV, numerator.arguments[i].Clone(true), denominator.Clone());
+						var rhs = FunctionArguments(1, FunctionType.DIV, numeratorClone, denominator.Clone(true));
 						var func = new FunctionResult
 						{
 							collapsed = true,
-							function = FunctionArguments(1, FunctionType.ADD,
-								FunctionArguments(1, FunctionType.DIV, numerator.arguments[i].Clone(true), denominator),
-								FunctionArguments(1, FunctionType.DIV, numeratorClone, denominator.Clone(true))
-							),
-							collapsedFunctionId = function.id
+							function = FunctionArguments(1, FunctionType.ADD, lhs, rhs),
+							functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.SPLIT_AND_DIVIDE_DIV, beforeFunctionIds = new int[] { numerator.arguments[i].id, denominator.id }, afterFunctionIds = new int[] { lhs.id, rhs.id } }
 						};
-						PrintDebug($"Partial division by splitting into multiple fractions");
 						return func;
 					}
 				}
@@ -354,35 +413,7 @@ namespace Algebra
 			{
 				function.arguments[0] = dividedNumerator.remainder;
 				function.arguments[1] = DivInternal(denominator, dividedNumerator.divisor).remainder;
-				PrintDebug($"Numerator is directly divisible by denominator");
-				return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = function.id };
-			}
-			else
-			{
-				foreach (var prime in primesGenerated)
-				{
-					var tryNumerator = DivInternal(numerator, FunctionPrimitive(prime));
-					var tryDenominator = DivInternal(denominator, FunctionPrimitive(prime));
-					if (tryNumerator.collapsed && tryDenominator.collapsed)
-					{
-						function.arguments[0] = tryNumerator.remainder;
-						function.arguments[1] = tryDenominator.remainder;
-						PrintDebug($"Numerator and Denominator can be divided by common factor {prime}");
-						return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = function.id };
-					}
-				}
-				foreach (Symbol symbol in Enum.GetValues(typeof(Symbol)))
-				{
-					var tryNumerator = DivInternal(numerator, FunctionPrimitive(1, symbol));
-					var tryDenominator = DivInternal(denominator, FunctionPrimitive(1, symbol));
-					if (tryNumerator.collapsed && tryDenominator.collapsed && tryNumerator.divisor.symbol == tryDenominator.divisor.symbol)
-					{
-						function.arguments[0] = tryNumerator.remainder;
-						function.arguments[1] = tryDenominator.remainder;
-						PrintDebug($"Numerator and Denominator can be divided by common factor {symbol}");
-						return new FunctionResult { collapsed = true, function = function, collapsedFunctionId = function.id };
-					}
-				}
+				return new FunctionResult { collapsed = true, function = function, functionCollapseInfo = dividedNumerator.functionCollapseInfo };
 			}
 			return new FunctionResult { collapsed = false, function = function };
 		}
@@ -395,19 +426,20 @@ namespace Algebra
 			if (clonedDenominator.quantity != 1 && (float)clonedNumerator.quantity / clonedDenominator.quantity == Math.Floor((float)clonedNumerator.quantity / clonedDenominator.quantity))
 			{
 				clonedNumerator.quantity /= clonedDenominator.quantity;
-				return new DivisionResult { collapsed = true, remainder = clonedNumerator, divisor = FunctionPrimitive(clonedDenominator.quantity) };
+				return new DivisionResult { collapsed = true, remainder = clonedNumerator, divisor = FunctionPrimitive(clonedDenominator.quantity), functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR, beforeFunctionIds = new int[] { numerator.id, denominator.id }, additionalInfo = clonedDenominator } };
 			}
 			if (clonedNumerator.functionType == FunctionType.PRIMITIVE && clonedDenominator.functionType == FunctionType.PRIMITIVE)
 			{
 				if (clonedNumerator.symbol != Symbol.NUMBER && clonedNumerator.symbol == clonedDenominator.symbol)
 				{
-					return new DivisionResult { collapsed = true, remainder = FunctionPrimitive(clonedNumerator.quantity), divisor = FunctionPrimitive(1, clonedNumerator.symbol) };
+					return new DivisionResult { collapsed = true, remainder = FunctionPrimitive(clonedNumerator.quantity), divisor = FunctionPrimitive(1, clonedNumerator.symbol), functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR, beforeFunctionIds = new int[] { numerator.id, denominator.id }, additionalInfo = clonedNumerator } };
 				}
 				return new DivisionResult { collapsed = false };
 			}
 			else if (clonedNumerator.functionType == FunctionType.ADD)
 			{
 				var divisor = new Function();
+				var functionCollapseInfo = new FunctionCollapseInfo();
 				for (var i = 0; i < clonedNumerator.arguments.Count; i++)
 				{
 					var result = DivInternal(clonedNumerator.arguments[i], clonedDenominator);
@@ -417,11 +449,12 @@ namespace Algebra
 					}
 					else
 					{
+						functionCollapseInfo = result.functionCollapseInfo;
 						clonedNumerator.arguments[i] = result.remainder;
 						divisor = result.divisor;
 					}
 				}
-				return new DivisionResult { collapsed = true, remainder = clonedNumerator, divisor = divisor };
+				return new DivisionResult { collapsed = true, remainder = clonedNumerator, divisor = divisor, functionCollapseInfo = functionCollapseInfo };
 			}
 			else if (clonedNumerator.functionType == FunctionType.MUL)
 			{
@@ -431,7 +464,7 @@ namespace Algebra
 					if (result.collapsed)
 					{
 						clonedNumerator.arguments[i] = result.remainder;
-						return new DivisionResult { collapsed = true, remainder = clonedNumerator, divisor = result.divisor };
+						return new DivisionResult { collapsed = true, remainder = clonedNumerator, divisor = result.divisor, functionCollapseInfo = result.functionCollapseInfo };
 					}
 				}
 				return new DivisionResult { collapsed = false, remainder = clonedNumerator };
@@ -442,17 +475,18 @@ namespace Algebra
 				{
 					var numeratorExponentContents = numerator.functionType == FunctionType.EXPONENTIAL ? numerator.arguments[1].Clone(true) : FunctionPrimitive(1);
 					var denominatorExponentContents = denominator.functionType == FunctionType.EXPONENTIAL ? denominator.arguments[1].Clone(true) : FunctionPrimitive(1);
-					var newExponent = FunctionArguments(1, FunctionType.ADD, numeratorExponentContents, FunctionArguments(1, FunctionType.MUL, FunctionPrimitive(-1), denominatorExponentContents));
+					denominatorExponentContents.quantity *= -1;
+					var newExponent = FunctionArguments(1, FunctionType.ADD, numeratorExponentContents, denominatorExponentContents);
 					var newBase = numerator.functionType == FunctionType.EXPONENTIAL ? numerator.arguments[0] : numerator;
 					newBase.quantity = 1;
 					var newExponential = FunctionArguments(numerator.quantity, FunctionType.EXPONENTIAL, newBase, newExponent);
 					clonedDenominator.quantity = 1;
-					return new DivisionResult { collapsed = true, remainder = newExponential, divisor = clonedDenominator };
+					return new DivisionResult { collapsed = true, remainder = newExponential, divisor = clonedDenominator, functionCollapseInfo = new FunctionCollapseInfo { functionCollapseType = FunctionCollapseType.DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR, beforeFunctionIds = new int[] { numerator.id, denominator.id }, additionalInfo = clonedDenominator } };
 				}
 				return new DivisionResult { collapsed = false, remainder = clonedNumerator };
 			}
 
-			throw new Exception("DivInternal fell through");
+			return new DivisionResult { collapsed = false, remainder = clonedNumerator };
 		}
 	}
 
@@ -511,6 +545,10 @@ namespace Algebra
 				{
 					resultHashes.mulHash += subResults.mulHash;
 				}
+				if (i == 1 && function.functionType == FunctionType.DIV)
+				{
+					resultHashes.addHash += subResults.exactHash;
+				}
 			}
 			if (function.functionType == FunctionType.EXPONENTIAL)
 			{
@@ -519,7 +557,12 @@ namespace Algebra
 			return resultHashes;
 		}
 
-		public static string PrintFunctions(Function function, int modifiedFunctionId = -1)
+		public static string PrintFunctionsWithoutColors(Function function)
+		{
+			return PrintFunctions(function, new int[0], FunctionCollapseType.DISTRIBUTE_QUANTITY_INTO_FUNCTION);
+		}
+
+		public static string PrintFunctions(Function function, int[] affectedFunctionIds, FunctionCollapseType functionCollapseType)
 		{
 			var output = "";
 			var modifiedMatched = false;
@@ -534,18 +577,23 @@ namespace Algebra
 				}
 				else
 				{
-					if (modifiedFunctionId == current.function.id)
-					{
-						modifiedMatched = true;
-						output += "__MODIFIED__";
-						toInspect.Add(new Printable { isString = true, stringValue = "__MODIFIED__" });
-					}
+					var affectedFunction = affectedFunctionIds != null && affectedFunctionIds.Contains(current.function.id);
+					var collapseDocumentation = Functions.collapseTypeDocumentation[(int)functionCollapseType];
 					if (current.function.functionType == FunctionType.PRIMITIVE)
 					{
-						output += current.function.quantity.ToString() + (current.function.symbol != Symbol.NUMBER ? current.function.symbol : "");
+						if (affectedFunction) output += "__MODIFIED__";
+						output += current.function.quantity.ToString();
+						if (affectedFunction && collapseDocumentation.affectsQuantity) output += "__MODIFIED__";
+						if (current.function.symbol != Symbol.NUMBER) output += current.function.symbol;
+						if (affectedFunction && !collapseDocumentation.affectsQuantity) output += "__MODIFIED__";
 					}
 					else
 					{
+						if (affectedFunction && !collapseDocumentation.affectsQuantity)
+						{
+							output += "__MODIFIED__";
+							toInspect.Add(new Printable { isString = true, stringValue = "__MODIFIED__" });
+						}
 						toInspect.Add(new Printable { isString = true, stringValue = ")" });
 						for (var i = current.function.arguments.Count - 1; i >= 0; i--)
 						{
@@ -562,13 +610,18 @@ namespace Algebra
 							}
 							toInspect.Add(new Printable { function = current.function.arguments[i] });
 						}
-						toInspect.Add(new Printable { isString = true, stringValue = $"{current.function.quantity}(" });
+						toInspect.Add(new Printable { isString = true, stringValue = $"(" });
+						if (affectedFunction && collapseDocumentation.affectsQuantity)
+						{
+							toInspect.Add(new Printable { isString = true, stringValue = "__MODIFIED__" });
+						}
+						toInspect.Add(new Printable { isString = true, stringValue = $"{current.function.quantity}" });
+						if (affectedFunction && collapseDocumentation.affectsQuantity)
+						{
+							toInspect.Add(new Printable { isString = true, stringValue = "__MODIFIED__" });
+						}
 					}
 				}
-			}
-			if (modifiedFunctionId > 0 && !modifiedMatched)
-			{
-				throw new Exception("Error: the provided modifiedFunctionId could not be found.");
 			}
 			return output;
 		}
@@ -585,6 +638,7 @@ namespace Algebra
 
 	enum FunctionType
 	{
+		NONE,
 		PRIMITIVE,
 		ADD,
 		MUL,
@@ -607,7 +661,7 @@ namespace Algebra
 			{
 				foreach (var argument in arguments)
 				{
-					newArguments.Add(argument.Clone());
+					newArguments.Add(argument.Clone(newId));
 				}
 			}
 			return new Function
@@ -633,13 +687,59 @@ namespace Algebra
 		public bool collapsed;
 		public Function remainder;
 		public Function divisor;
+		public FunctionCollapseInfo functionCollapseInfo;
+	}
+
+	public enum FunctionCollapseType : byte
+	{
+		DISTRIBUTE_QUANTITY_INTO_FUNCTION,
+		HOIST_NESTED_FUNCTION_WITH_SAME_TYPE,
+		EXTRACT_ARGUMENT_QUANTITY_INTO_FUNCTION,
+		HOIST_SINGLE_ARGUMENT_INTO_PARENT,
+		ELIMINATE_ZERO_TERMS,
+		COMBINE_DIV_WITH_MATCHING_DENOMINATOR,
+		COMBINE_ADDABLE_TERMS,
+		MULTIPLY_PRIMITIVE_NUMBERS,
+		MULTIPLY_DIV_FUNCTIONS,
+		MULTIPLY_INTO_DIV_NUMERATOR,
+		DISTRIBUTE_FUNCTION_INTO_ADD_ARGUMENTS,
+		MULTIPLY_EXPONENTS,
+		MULTIPLY_OUT_NESTED_EXPONENTS,
+		EXPONENT_IS_ZERO,
+		CONVERT_NEGATIVE_EXPONENT_TO_RECIPROCAL,
+		CONVERT_NUMERIC_EXPONENT_TO_REPEATED_MUL,
+		SQUARE_ROOT_OF_PRIMITIVE_NUMBER,
+		COLLAPSE_DIV_WITH_DENOMINATOR_1,
+		COLLAPSE_DIV_WITH_NUMERATOR_0,
+		CONVERT_NESTED_DIV_TO_RECIPROCAL_MUL,
+		COLLAPSE_VALUE_DIVIDED_BY_ITSELF,
+		SPLIT_AND_DIVIDE_DIV,
+		DIV_NUMERATOR_DENOMINATOR_COMMON_FACTOR,
+	}
+
+	public struct FunctionCollapseTypeDocumentation
+	{
+		public FunctionCollapseType functionCollapseType;
+		public string devMessage;
+		public string humanReadableMessage;
+		public bool affectsQuantity;
+		public bool internalOnly;
+		public bool hasAdditionalInfo;
+	}
+
+	struct FunctionCollapseInfo
+	{
+		public int[] beforeFunctionIds;
+		public int[] afterFunctionIds;
+		public FunctionCollapseType functionCollapseType;
+		public Function additionalInfo;
 	}
 
 	struct FunctionResult
 	{
 		public bool collapsed;
 		public Function function;
-		public int collapsedFunctionId;
+		public FunctionCollapseInfo functionCollapseInfo;
 	}
 
 	struct Printable

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { AlgebraConfig, AlgebraFunction, AlgebraFunctionType, AlgebraSymbol, CloneAlgebraFunction, ExecuteFunction, FunctionArguments, FunctionPrimitive, PrintFunctions, PrintFunctionsLatex, TestResult } from "./algebra";
+import { AlgebraConfig, AlgebraFunction, AlgebraFunctionType, AlgebraSymbol, CloneAlgebraFunction, ExecuteFunction, FunctionArguments, FunctionPrimitive, PrintFunctions, PrintFunctionsLatex, PrintFunctionsWithoutColors, TestResult, collapseTypeDocumentation } from "./algebra";
 
 var debug = process.argv.length > 2 && process.argv[2] == "DEBUG";
 function CheckFunctionOutput(name: string, assert: string, algebraFunction: AlgebraFunction) {
@@ -23,10 +23,14 @@ function CheckFunctionOutput(name: string, assert: string, algebraFunction: Alge
 	AlgebraConfig.DEBUG = true;
 }
 
-function PrintFunctionsWithColors(functionString: string) {
-	var split = functionString.split("__MODIFIED__");
-	if (split.length == 3) {
-		console.log(split[0], "\x1b[34m", split[1], "\x1b[0m", split[2]);
+function PrintFunctionsWithColors(functionString: string, consoleColor: string = "\x1b[31m") {
+	let split = functionString.split("__MODIFIED__");
+	let toOutput = "";
+	if (split.length > 1) {
+		for (let i = 0; i < split.length; i++) {
+			toOutput += ((i % 2 == 1) ? consoleColor : "") + split[i] + ((i % 2 == 1) ? "\x1b[0m" : "");
+		}
+		console.log(toOutput);
 	}
 	else {
 		console.log(split[0]);
@@ -36,41 +40,54 @@ function PrintFunctionsWithColors(functionString: string) {
 function CheckFunctionOutputInternal(name: string, assert: string, algebraFunction: AlgebraFunction, debug = false): TestResult {
 	var currentFunction = CloneAlgebraFunction(algebraFunction);
 	if (debug) {
-		console.log("\x1b[33m", name, "\x1b[0m");
-		console.log("\x1b[36m", `Starting value: ${PrintFunctions(currentFunction)}`, "\x1b[0m");
-		console.log("\x1b[36m", `Expecting result: ${assert}`, "\x1b[0m");
+		console.log("\x1b[33m" + name + "\x1b[0m");
+		console.log("\x1b[36m" + `Starting value: ${PrintFunctionsWithoutColors(currentFunction)}` + "\x1b[0m");
+		console.log("\x1b[36m" + `Expecting result: ${assert}` + "\x1b[0m");
 	}
 	var resultsList: string[] = [];
 	for (var i = 0; i < 1000; i++) {
-		var resultString = PrintFunctions(currentFunction);
+		var resultString = PrintFunctionsWithoutColors(currentFunction);
 		var result = ExecuteFunction(currentFunction);
 		if (debug) {
-			if (!result.collapsed) {
-				console.log("\x1b[30m", "- Result", "\x1b[0m");
+			if (result.collapsed && result.functionCollapseInfo) {
+				var collapseType = result.functionCollapseInfo.functionCollapseType;
+				var docs = collapseTypeDocumentation[collapseType].devMessage;
+				if (result.functionCollapseInfo.additionalInfo) {
+					docs = docs.replace("?", PrintFunctionsWithoutColors(result.functionCollapseInfo.additionalInfo));
+				}
+				console.log("- " + docs + " ↓");
 			}
-			PrintFunctionsWithColors(PrintFunctions(currentFunction, result.collapsedFunctionId));
+			else if (!result.collapsed) {
+				console.log("\x1b[30m" + "- Result" + "\x1b[0m");
+			}
+			if (result.functionCollapseInfo) {
+				PrintFunctionsWithColors(PrintFunctions(currentFunction, result.functionCollapseInfo.beforeFunctionIds, result.functionCollapseInfo.functionCollapseType));
+				if (result.functionCollapseInfo.afterFunctionIds != null) {
+					PrintFunctionsWithColors(PrintFunctions(result.algebraFunction, result.functionCollapseInfo.afterFunctionIds, result.functionCollapseInfo.functionCollapseType), "\x1b[34m");
+				}
+			}
 		}
 		currentFunction = result.algebraFunction;
 		if (!result.collapsed) {
 			if (resultString != assert) {
-				console.log("\x1b[31m", `${name} - Failed`, '\x1b[0m');
+				console.log("\x1b[31m" + `${name} - Failed` + '\x1b[0m');
 				console.log(`Expected: \"${assert}\"`);
 				console.log(`Output: \"${resultString}\"\n`);
 				return TestResult.ASSERT_NOT_MATCH;
 			}
 			else {
-				console.log("\x1b[32m", `${name} - Passed\n`, '\x1b[0m');
+				console.log("\x1b[32m" + `${name} - Passed\n` + '\x1b[0m');
 				return TestResult.SUCCESS;
 			}
 		}
 		else if (result.collapsed && resultsList.findIndex(r => r == resultString) != -1 && resultString == assert) {
-			console.log("\x1b[32m", `${name} - Passed with convergence\n`, '\x1b[0m');
+			console.log("\x1b[32m" + `${name} - Passed with convergence\n` + '\x1b[0m');
 			return TestResult.SUCCESS;
 		}
 		resultsList.push(resultString);
 	}
-	console.log("\x1b[31m", "Failed with infinite loop. Last function:", '\x1b[0m');
-	console.log(PrintFunctions(currentFunction));
+	console.log("\x1b[31m" + "Failed with infinite loop. Last function:" + '\x1b[0m');
+	console.log(PrintFunctionsWithoutColors(currentFunction));
 	return TestResult.INFINITE_LOOP;
 }
 
@@ -156,9 +173,14 @@ CheckFunctionOutput("Exponential Add", "1(1(1X ^ 3) + 3(1X ^ 2) + 3X + 1)", Func
 	FunctionPrimitive(3)
 ));
 
-CheckFunctionOutput("Nested Exponential", "1(1X ^ 6(1Y * 1A))", FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+CheckFunctionOutput("Nested Exponential as Exponent", "1(1X ^ 6(1Y * 1A))", FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
 	FunctionPrimitive(1, AlgebraSymbol.X),
 	FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL, FunctionPrimitive(2, AlgebraSymbol.Y), FunctionPrimitive(3, AlgebraSymbol.A))
+));
+
+CheckFunctionOutput("Nested Exponential as Base", "1(2Y ^ 3(1A * 1X))", FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+	FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL, FunctionPrimitive(2, AlgebraSymbol.Y), FunctionPrimitive(3, AlgebraSymbol.A)),
+	FunctionPrimitive(1, AlgebraSymbol.X)
 ));
 
 CheckFunctionOutput("Basic Divide", "3", FunctionArguments(1, AlgebraFunctionType.DIV, FunctionPrimitive(6), FunctionPrimitive(2)));
@@ -240,7 +262,18 @@ CheckFunctionOutput("Divide Add By Common Pronumeral", "1(1(3X + 4) / 1(1A + 2Y)
 	)
 ));
 
-CheckFunctionOutput("Add Fractions", "1(1(4 / 3) + 1(1(10 + 1X) / 3Y))", FunctionArguments(1, AlgebraFunctionType.ADD,
+CheckFunctionOutput("Add primitive fractions", "1", FunctionArguments(1, AlgebraFunctionType.ADD,
+	FunctionArguments(1, AlgebraFunctionType.DIV,
+		FunctionPrimitive(1),
+		FunctionPrimitive(3)
+	),
+	FunctionArguments(1, AlgebraFunctionType.DIV,
+		FunctionPrimitive(2),
+		FunctionPrimitive(3)
+	)
+));
+
+CheckFunctionOutput("Add Fractions", "1(1(1 / 3) + 1(1(10 + 1X) / 3Y) + 2)", FunctionArguments(1, AlgebraFunctionType.ADD,
 	FunctionArguments(1, AlgebraFunctionType.DIV,
 		FunctionArguments(1, AlgebraFunctionType.ADD,
 			FunctionPrimitive(1, AlgebraSymbol.Y),
@@ -334,3 +367,30 @@ CheckFunctionOutput("Exponential square root", "1(1X ^ 1(1 / 2))",
 		FunctionPrimitive(2)
 	)
 );
+
+CheckFunctionOutput("Complex Numerator", "1(12 + 6X + 1(1X ^ 2))",
+	FunctionArguments(1, AlgebraFunctionType.DIV,
+		FunctionArguments(1, AlgebraFunctionType.ADD,
+			FunctionArguments(1, AlgebraFunctionType.EXPONENTIAL,
+				FunctionArguments(1, AlgebraFunctionType.ADD,
+					FunctionPrimitive(2),
+					FunctionPrimitive(1, AlgebraSymbol.X)
+				),
+				FunctionPrimitive(3)
+			),
+			FunctionArguments(-1, AlgebraFunctionType.EXPONENTIAL,
+				FunctionPrimitive(2),
+				FunctionPrimitive(3)
+			)
+		),
+		FunctionPrimitive(1, AlgebraSymbol.X)
+	)
+);
+
+CheckFunctionOutput("Zero Numerator", "1",
+	FunctionArguments(1, AlgebraFunctionType.ADD,
+		FunctionPrimitive(1),
+		FunctionArguments(1, AlgebraFunctionType.DIV, FunctionPrimitive(0), FunctionPrimitive(1, AlgebraSymbol.X))
+	)
+);
+
